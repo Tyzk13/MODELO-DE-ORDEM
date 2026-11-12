@@ -11,7 +11,8 @@ Dica: no celular, use "Adicionar à tela de início" no navegador para abrir com
 ## O que dá para fazer
 
 - **Renda**: cadastre salário e rendas extras.
-- **Contas fixas**: luz, água, aluguel, internet… com dia de vencimento e marcação de "paga". Elas são copiadas automaticamente para o mês seguinte.
+- **Contas fixas**: luz, água, aluguel, internet… com dia de vencimento e botão "Paguei". Elas se repetem sozinhas no mês seguinte.
+- **Contas de valor variável** (luz, água, gás, cartão): no mês seguinte chegam com a média dos últimos 3 meses, marcadas como "estimado". Quando a conta chegar, toque nela e informe o valor real; o app guarda o histórico.
 - **Botão + Gasto**: lança um gasto em segundos (valor, categoria, pronto), avisando antes se vai estourar algum limite.
 - **Quanto posso gastar hoje**: o valor do dia, recalculado conforme você gasta.
 - **Limites**: defina um limite geral do mês e limites por categoria. As barras ficam amarelas a partir de 80% e vermelhas quando passa do limite. 

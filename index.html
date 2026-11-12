@@ -104,6 +104,12 @@
   .item.paga .nome { text-decoration: line-through; color: var(--muted); }
   .badge { font-size: .7rem; font-weight: 700; padding: 2px 8px; border-radius: 999px; white-space: nowrap; text-decoration: none; display: inline-block; }
   .badge.bad { background: var(--bad-soft); color: var(--bad); } .badge.warn { background: var(--warn-soft); color: var(--warn); } .badge.ok { background: var(--ok-soft); color: var(--ok); }
+  .badge.est { background: var(--accent-soft); color: var(--accent); }
+  .info-btn { border: 0; background: none; padding: 0; text-align: left; cursor: pointer; }
+  .toggle { display: flex; gap: 10px; align-items: center; font-size: .92rem; cursor: pointer; }
+  .toggle input { width: 20px; height: 20px; accent-color: var(--accent); flex: none; margin: 0; }
+  .hist { display: flex; flex-wrap: wrap; gap: 6px; }
+  .hist span { background: var(--bg); border-radius: 8px; padding: 4px 8px; font-size: .78rem; }
   .pagar { border: 1px solid var(--line); background: var(--surface); border-radius: 999px; padding: 6px 12px; font-weight: 600; font-size: .82rem; white-space: nowrap; }
   .pagar:hover { border-color: var(--ok); color: var(--ok); }
 
@@ -213,6 +219,24 @@
   </form>
 </div>
 
+<div class="sheet" id="sheetConta" hidden role="dialog" aria-label="Editar conta">
+  <form class="wrap" id="formContaEd" autocomplete="off">
+    <div class="puxador"></div>
+    <div class="card-head"><h2 id="scTitulo">Conta</h2><button type="button" class="link" data-fechar="1">Cancelar</button></div>
+    <label class="valor-grande"><span>R$</span><input id="scValor" inputmode="decimal" placeholder="0,00" aria-label="Valor deste mês"></label>
+    <div id="scInfo" class="small muted"></div>
+    <div class="linha">
+      <input class="campo" id="scNome" placeholder="Nome da conta" aria-label="Nome da conta">
+      <input class="campo estreito" id="scVenc" inputmode="numeric" placeholder="Dia venc." aria-label="Dia do vencimento">
+    </div>
+    <label class="toggle"><input type="checkbox" id="scVar"> O valor muda todo mês (luz, água, gás…)</label>
+    <div class="linha">
+      <button type="button" class="btn" id="scPagar">Marcar como paga</button>
+      <button class="btn sec" id="scSalvar">Só salvar</button>
+    </div>
+  </form>
+</div>
+
 <div class="toast" id="toast" hidden><span id="toastMsg"></span><button id="toastBtn" hidden></button></div>
 
 <script>
@@ -221,6 +245,7 @@
   const KEY = 'orcamento-v2';
   const CATS = ['Mercado', 'Transporte', 'Comer fora', 'Lazer', 'Saúde', 'Casa', 'Outros'];
   const SUGESTOES = ['Luz', 'Água', 'Internet', 'Aluguel', 'Celular', 'Gás', 'Condomínio', 'Cartão de crédito'];
+  const VARIAVEIS = ['Luz', 'Água', 'Gás', 'Cartão de crédito'];
   const $ = s => document.querySelector(s);
   const brl = v => (v || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
   const uid = () => Math.random().toString(36).slice(2, 10) + Date.now().toString(36).slice(-4);
@@ -274,20 +299,39 @@
   function modeloDe(m) {
     return {
       renda: (m.renda || []).map(({ nome, valor }) => ({ nome, valor })),
-      contas: (m.contas || []).map(({ nome, valor, venc }) => ({ nome, valor, venc: venc || null })),
+      contas: (m.contas || []).map(({ nome, valor, venc, variavel }) => ({ nome, valor, venc: venc || null, variavel: !!variavel })),
       limites: { ...(m.limites || {}) }, limiteGeral: m.limiteGeral || 0, meta: m.meta || 0
     };
   }
-  function deModelo(mod) {
+  // histórico dos valores reais das contas variáveis: cfg.hist[nome][mes] = valor
+  function mediaHist(nome, k) {
+    const h = (cfg.hist || {})[nome] || {};
+    const vs = Object.keys(h).filter(x => x < k).sort().slice(-3).map(x => h[x]);
+    return vs.length ? Math.round(vs.reduce((a, b) => a + b, 0) / vs.length * 100) / 100 : 0;
+  }
+  function registraHist(nome, k, valor) {
+    if (!cfg.hist) cfg.hist = {};
+    const h = cfg.hist[nome] = cfg.hist[nome] || {};
+    if (h[k] === valor) return;
+    h[k] = valor;
+    const ks = Object.keys(h).sort(); while (ks.length > 12) delete h[ks.shift()];
+    [...virtual].forEach(v => { if (v !== mesAtual) { delete meses[v]; virtual.delete(v); } });
+    grava('config', cfg);
+  }
+  function deModelo(mod, k) {
     return {
       renda: mod.renda.map(r => ({ ...r, id: uid() })),
-      contas: mod.contas.map(c => ({ ...c, id: uid(), paga: false })),
+      contas: mod.contas.map(c => {
+        const o = { ...c, id: uid(), paga: false };
+        if (c.variavel) { const md = mediaHist(c.nome, k); if (md) o.valor = md; o.estimada = true; }
+        return o;
+      }),
       gastos: [], limites: { ...mod.limites }, limiteGeral: mod.limiteGeral || 0, meta: mod.meta || 0
     };
   }
   function garanteMes(k) {
     if (!meses[k]) {
-      meses[k] = (k < chaveMes(agora()) || !cfg.modelo) ? vazio() : deModelo(cfg.modelo);
+      meses[k] = (k < chaveMes(agora()) || !cfg.modelo) ? vazio() : deModelo(cfg.modelo, k);
       virtual.add(k);
     }
     const m = meses[k];
@@ -430,10 +474,14 @@
       if (n === 'bad') al.push(['bad', `${cat}: passou ${brl(g - lim)} do limite.`]);
       else if (n === 'warn') al.push(['warn', `${cat}: já usou ${Math.round(g / lim * 100)}% do limite.`]);
     });
+    const avisadas = new Set();
     if (c.atual) m.contas.filter(x => !x.paga && x.venc).forEach(x => {
       const d = x.venc - hoje;
-      if (d < 0) al.push(['bad', `${x.nome} venceu dia ${x.venc} (${brl(x.valor)}).`, x.id]);
-      else if (d <= 3) al.push(['warn', `${x.nome} vence ${d === 0 ? 'hoje' : d === 1 ? 'amanhã' : `em ${d} dias`} (${brl(x.valor)}).`, x.id]);
+      if (d < 0) { al.push(['bad', `${x.nome} venceu dia ${x.venc} (${brl(x.valor)}${x.estimada ? ', estimado' : ''}).`, x.id]); avisadas.add(x.id); }
+      else if (d <= 3) { al.push(['warn', `${x.nome} vence ${d === 0 ? 'hoje' : d === 1 ? 'amanhã' : `em ${d} dias`} (${brl(x.valor)}${x.estimada ? ', estimado' : ''}).`, x.id]); avisadas.add(x.id); }
+    });
+    if (c.atual) m.contas.filter(x => !x.paga && x.estimada && !avisadas.has(x.id) && (!x.venc || x.venc - hoje <= 10)).forEach(x => {
+      al.push(['info', `${x.nome}: estimei ${brl(x.valor)} pela média. Informe o valor quando a conta chegar.`, x.id, 'Informar']);
     });
     return al;
   }
@@ -513,11 +561,11 @@
           <div><small style="--c:var(--track)">Livre</small><b class="num ${c.disponivel < 0 ? 'bad-t' : ''}">${brl(c.disponivel)}</b></div>
         </div>
       </div>
-      ${al.length ? `<div class="card" style="gap:8px"><h3>Atenção</h3>${al.map(([t, msg, id]) => `<div class="alerta ${t}"><span>${esc(msg)}</span>${id ? `<button data-pagar="${id}">Paguei</button>` : ''}</div>`).join('')}</div>` : ''}
+      ${al.length ? `<div class="card" style="gap:8px"><h3>Atenção</h3>${al.map(([t, msg, id, acao]) => `<div class="alerta ${t}"><span>${esc(msg)}</span>${id ? (acao ? `<button data-editconta="${id}">${acao}</button>` : `<button data-pagar="${id}">Paguei</button>`) : ''}</div>`).join('')}</div>` : ''}
       <div class="card">
         <div class="card-head"><h3>Contas a pagar</h3><button class="link" data-ir="contas">Ver todas</button></div>
         <div class="lista">${prox.length ? prox.map(x => `
-          <div class="item"><div class="info"><div class="nome">${esc(x.nome)} ${selo(x, c.atual)}</div><div class="sub">${x.venc ? 'vence dia ' + x.venc : 'sem vencimento'}</div></div>
+          <div class="item"><button class="info info-btn" data-editconta="${x.id}"><div class="nome">${esc(x.nome)} ${selo(x, c.atual)}</div><div class="sub">${x.venc ? 'vence dia ' + x.venc : 'sem vencimento'}${x.estimada ? ' · estimado' : ''}</div></button>
           <span class="v num">${brl(x.valor)}</span><button class="pagar" data-pagar="${x.id}">Paguei</button></div>`).join('')
           : `<div class="vazio">${m.contas.length ? 'Todas as contas do mês estão pagas.' : 'Nenhuma conta fixa cadastrada.'}</div>`}</div>
       </div>
@@ -534,6 +582,7 @@
 
   function telaContas(m, c) {
     const lista = m.contas.slice().sort((x, y) => (x.paga - y.paga) || ((x.venc || 99) - (y.venc || 99)));
+    const est = soma(m.contas.filter(x => x.estimada && !x.paga));
     $('#v-contas').innerHTML = `
       <div class="card">
         <div class="legenda">
@@ -541,17 +590,18 @@
           <div><small style="--c:var(--ok)">Pagas</small><b class="num">${brl(c.contasPagas)}</b></div>
         </div>
         ${c.contas ? `<div class="barra"><i style="width:${c.contasPagas / c.contas * 100}%"></i></div>` : ''}
+        ${est ? `<div class="small muted">Inclui <b class="num">${brl(est)}</b> estimado em contas que ainda não chegaram.</div>` : ''}
       </div>
       <div class="card">
         <h3>Contas fixas do mês</h3>
         <div class="lista">${lista.length ? lista.map(x => `
           <div class="item ${x.paga ? 'paga' : ''}">
             <button class="check ${x.paga ? 'on' : ''}" data-pagar="${x.id}" aria-label="${x.paga ? 'Marcar como não paga' : 'Marcar como paga'}">✓</button>
-            <div class="info"><div class="nome">${esc(x.nome)}</div><div class="sub">${x.venc ? 'vence dia ' + x.venc : 'sem vencimento'} ${selo(x, c.atual)}</div></div>
+            <button class="info info-btn" data-editconta="${x.id}"><div class="nome">${esc(x.nome)}</div><div class="sub">${x.venc ? 'vence dia ' + x.venc : 'sem vencimento'}${x.variavel ? ' · valor variável' : ''} ${x.estimada ? '<span class="badge est">estimado</span>' : ''} ${selo(x, c.atual)}</div></button>
             <input class="val-in" inputmode="decimal" value="${fmtIn(x.valor)}" data-valconta="${x.id}" aria-label="Valor de ${esc(x.nome)}">
             <button class="x" data-del="contas" data-id="${x.id}" aria-label="Remover conta">✕</button>
           </div>`).join('') : '<div class="vazio">Nenhuma conta cadastrada ainda.</div>'}</div>
-        <p class="small muted" style="margin:0">Toque no valor para mudar só neste mês, por exemplo quando a conta de luz vier diferente. As contas se repetem sozinhas no mês seguinte.</p>
+        <p class="small muted" style="margin:0">Toque numa conta para editar. As contas se repetem sozinhas no mês seguinte. As de valor variável, como a luz, chegam com a média dos últimos 3 meses marcada como estimado, até você informar o valor real.</p>
       </div>
       <form class="card" data-form="conta" autocomplete="off">
         <h3>Adicionar conta</h3>
@@ -561,6 +611,7 @@
           <input class="campo" name="valor" id="cValor" inputmode="decimal" placeholder="Valor (R$)" required>
           <input class="campo estreito" name="venc" id="cVenc" inputmode="numeric" placeholder="Dia venc.">
         </div>
+        <label class="toggle"><input type="checkbox" name="var" id="cVar"> O valor muda todo mês (luz, água, gás…)</label>
         <button class="btn">Adicionar conta</button>
       </form>`;
   }
@@ -661,11 +712,11 @@
     d.value = mesAtual === hojeK ? dataISO(agora()) : d.min;
     $('#gValor').value = ''; $('#gDesc').value = '';
     if (!cfg.categorias.includes(catSel)) catSel = cfg.categorias[0] || 'Outros';
-    $('#fundo').hidden = false; $('#sheet').hidden = false;
+    $('#toast').hidden = true; $('#fundo').hidden = false; $('#sheet').hidden = false;
     atualizaGasto();
     setTimeout(() => $('#gValor').focus(), 60);
   }
-  function fechaGasto() { $('#fundo').hidden = true; $('#sheet').hidden = true; }
+  function fechaGasto() { $('#fundo').hidden = true; $('#sheet').hidden = true; $('#sheetConta').hidden = true; }
   function atualizaGasto() {
     const m = garanteMes(mesAtual), c = calc(m, mesAtual), v = num($('#gValor').value);
     $('#gCats').innerHTML = cfg.categorias.map(k => {
@@ -704,7 +755,50 @@
   $('#fab').onclick = abreGasto;
   $('#fechar').onclick = fechaGasto;
   $('#fundo').onclick = fechaGasto;
-  document.addEventListener('keydown', e => { if (e.key === 'Escape' && !$('#sheet').hidden) fechaGasto(); });
+  document.addEventListener('keydown', e => { if (e.key === 'Escape' && !$('#fundo').hidden) fechaGasto(); });
+  document.querySelector('#sheetConta [data-fechar]').onclick = fechaGasto;
+
+  // ---------- folha de editar conta ----------
+  let contaEd = null;
+  const nomeMesCurto = k => { const [a, mm] = k.split('-').map(Number); return new Date(a, mm - 1, 1).toLocaleDateString('pt-BR', { month: 'short' }).replace('.', '') + '/' + String(a).slice(2); };
+  function abreConta(id, modoPagar) {
+    if (!pronto()) { toast('Carregando seus dados, tente de novo em instantes'); return; }
+    const x = garanteMes(mesAtual).contas.find(c => c.id === id);
+    if (!x) return;
+    contaEd = id;
+    $('#scTitulo').textContent = x.estimada || modoPagar ? `${x.nome}: quanto veio?` : x.nome;
+    $('#scValor').value = fmtIn(x.valor);
+    $('#scNome').value = x.nome; $('#scVenc').value = x.venc || ''; $('#scVar').checked = !!x.variavel;
+    const h = (cfg.hist || {})[x.nome] || {};
+    const ks = Object.keys(h).filter(k => k !== mesAtual).sort().slice(-4).reverse();
+    $('#scInfo').innerHTML = (x.estimada ? `<p style="margin:0 0 6px">Esse valor é uma estimativa pela média dos últimos meses. Troque pelo valor que veio na conta.</p>` : '')
+      + (ks.length ? `<div class="hist">${ks.map(k => `<span>${nomeMesCurto(k)}: <b class="num">${brl(h[k])}</b></span>`).join('')}</div>` : '');
+    $('#scPagar').hidden = !!x.paga;
+    $('#scSalvar').textContent = x.paga ? 'Salvar' : 'Só salvar';
+    $('#toast').hidden = true; $('#fundo').hidden = false; $('#sheetConta').hidden = false;
+    setTimeout(() => { const i = $('#scValor'); i.focus(); i.select(); }, 60);
+  }
+  function salvaConta(pagar) {
+    const v = num($('#scValor').value);
+    if (!v) { $('#scValor').focus(); toast('Digite o valor da conta'); return; }
+    const nome = $('#scNome').value.trim() || 'Conta';
+    const venc = parseInt($('#scVenc').value, 10);
+    let x0, antigo;
+    const ok = editar(m => {
+      const x = m.contas.find(c => c.id === contaEd); if (!x) return;
+      antigo = x.nome;
+      Object.assign(x, { valor: v, nome, venc: venc >= 1 && venc <= 31 ? venc : null, variavel: $('#scVar').checked, estimada: false });
+      if (pagar) x.paga = true;
+      x0 = { ...x };
+    });
+    if (!ok || !x0) return;
+    if (antigo !== nome && cfg.hist && cfg.hist[antigo]) { cfg.hist[nome] = { ...cfg.hist[antigo], ...(cfg.hist[nome] || {}) }; delete cfg.hist[antigo]; grava('config', cfg); }
+    if (x0.variavel) registraHist(nome, mesAtual, v);
+    fechaGasto();
+    toast(pagar ? `${nome} paga: ${brl(v)}` : `${nome} atualizada`);
+  }
+  $('#formContaEd').addEventListener('submit', e => { e.preventDefault(); salvaConta(false); });
+  $('#scPagar').onclick = () => salvaConta(true);
 
   // ---------- aviso rápido ----------
   let toastTimer;
@@ -742,13 +836,17 @@
   // cliques
   document.addEventListener('click', e => {
     const t = e.target.closest('button');
-    if (!t || t.closest('#sheet') || t.id === 'toastBtn') return;
+    if (!t || t.closest('.sheet') || t.id === 'toastBtn') return;
     const d = t.dataset;
     if (d.tab) irPara(d.tab);
     else if (d.ir) irPara(d.ir);
+    else if (d.editconta) abreConta(d.editconta);
     else if (d.pagar) {
+      const c0 = garanteMes(mesAtual).contas.find(x => x.id === d.pagar);
+      if (c0 && !c0.paga && c0.estimada) { abreConta(c0.id, true); return; }
       let nome = '', agoraPaga = false;
       editar(m => { const x = m.contas.find(x => x.id === d.pagar); if (x) { x.paga = !x.paga; nome = x.nome; agoraPaga = x.paga; } });
+      if (c0 && c0.variavel && agoraPaga) registraHist(c0.nome, mesAtual, c0.valor);
       if (nome && agoraPaga) toast(`${nome} marcada como paga`, 'Desfazer', () => editar(m => { const x = m.contas.find(x => x.id === d.pagar); if (x) x.paga = false; }));
     }
     else if (d.del) {
@@ -761,7 +859,7 @@
       editarCfg(c => c.categorias = c.categorias.filter(x => x !== k));
       toast(`Categoria ${k} excluída`, 'Desfazer', () => editarCfg(c => { if (!c.categorias.includes(k)) c.categorias.splice(i, 0, k); }));
     }
-    else if (d.sug) { $('#cNome').value = d.sug; $('#cValor').focus(); }
+    else if (d.sug) { $('#cNome').value = d.sug; $('#cVar').checked = VARIAVEIS.includes(d.sug); $('#cValor').focus(); }
     else if (d.filtro !== undefined) { filtro = d.filtro; render(); }
     else if (d.sugerir) { const c = calc(garanteMes(mesAtual), mesAtual); editar(m => m.limiteGeral = Math.max(0, Math.round((c.renda - c.contas - c.meta) * 100) / 100)); }
     else if (d.metapct) { const c = calc(garanteMes(mesAtual), mesAtual); editar(m => m.meta = Math.round(c.renda * d.metapct) / 100); toast('Meta de economia atualizada'); }
@@ -773,7 +871,7 @@
   // edições em campos de valor
   document.addEventListener('change', e => {
     const t = e.target, d = t.dataset || {};
-    if (d.valconta) editar(m => { const x = m.contas.find(x => x.id === d.valconta); if (x) x.valor = num(t.value); });
+    if (d.valconta) { let x0; editar(m => { const x = m.contas.find(x => x.id === d.valconta); if (x) { x.valor = num(t.value); x.estimada = false; x0 = { ...x }; } }); if (x0 && x0.variavel) registraHist(x0.nome, mesAtual, x0.valor); }
     else if (d.valrenda) editar(m => { const x = m.renda.find(x => x.id === d.valrenda); if (x) x.valor = num(t.value); });
     else if (d.lim) editar(m => { const v = num(t.value); if (v) m.limites[d.lim] = v; else delete m.limites[d.lim]; });
     else if (d.limgeral) editar(m => m.limiteGeral = num(t.value));
@@ -800,8 +898,11 @@
       const v = num(f.valor.value); if (!v) return toast('Digite o valor da conta');
       const venc = parseInt(f.venc.value, 10);
       const nome = f.nome.value.trim();
-      editar(m => m.contas.push({ id: uid(), nome, valor: v, venc: venc >= 1 && venc <= 31 ? venc : null, paga: false }));
-      toast(`${nome} adicionada`);
+      const variavel = f.var.checked;
+      if (editar(m => m.contas.push({ id: uid(), nome, valor: v, venc: venc >= 1 && venc <= 31 ? venc : null, paga: false, variavel }))) {
+        if (variavel) registraHist(nome, mesAtual, v);
+        toast(`${nome} adicionada`);
+      }
     } else if (tipo === 'cat') {
       const nome = f.nome.value.trim();
       if (nome && !cfg.categorias.includes(nome)) editarCfg(c => c.categorias.push(nome));
