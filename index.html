@@ -1,0 +1,411 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Meu Orçamento</title>
+<style>
+  :root {
+    --bg: #f5f6f8; --card: #ffffff; --text: #1d2330; --muted: #6b7385; --border: #e2e5eb;
+    --accent: #2f6fde; --ok: #1f9d55; --warn: #d98b00; --bad: #d64545; --track: #eceef2;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #12151b; --card: #1b1f27; --text: #e8eaef; --muted: #9aa2b2; --border: #2b303b;
+      --accent: #5b8ff0; --ok: #3cc47a; --warn: #f0a92b; --bad: #f06666; --track: #2a2f39;
+    }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; background: var(--bg); color: var(--text); font-size: 15px; }
+  header { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 16px; max-width: 1100px; margin: 0 auto; flex-wrap: wrap; }
+  h1 { font-size: 1.3rem; margin: 0; }
+  h2 { font-size: 1.05rem; margin: 0 0 12px; }
+  main { max-width: 1100px; margin: 0 auto; padding: 0 16px 40px; display: grid; gap: 16px; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); }
+  .card { background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 16px; min-width: 0; }
+  .wide { grid-column: 1 / -1; }
+  .mes { display: flex; align-items: center; gap: 8px; }
+  .mes strong { min-width: 150px; text-align: center; }
+  button { font: inherit; border: 1px solid var(--border); background: var(--card); color: var(--text); border-radius: 8px; padding: 6px 12px; cursor: pointer; }
+  button:hover { border-color: var(--accent); }
+  button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+  button.icon { padding: 2px 8px; color: var(--muted); }
+  input, select { font: inherit; padding: 6px 8px; border: 1px solid var(--border); border-radius: 8px; background: var(--bg); color: var(--text); min-width: 0; }
+  form.linha { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 10px; }
+  form.linha input[type=text] { flex: 2 1 120px; }
+  form.linha input[type=number] { flex: 1 1 80px; }
+  form.linha input[type=date] { flex: 1 1 120px; }
+  form.linha select { flex: 1 1 100px; }
+  .resumo { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; }
+  .stat { background: var(--bg); border-radius: 10px; padding: 12px; }
+  .stat span { display: block; color: var(--muted); font-size: .82rem; }
+  .stat b { font-size: 1.25rem; font-variant-numeric: tabular-nums; }
+  .ok { color: var(--ok); } .warn { color: var(--warn); } .bad { color: var(--bad); }
+  table { width: 100%; border-collapse: collapse; }
+  td { padding: 7px 4px; border-bottom: 1px solid var(--border); vertical-align: middle; }
+  td.v { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+  td.a { width: 1%; white-space: nowrap; }
+  .sub { color: var(--muted); font-size: .82rem; }
+  .paga td:not(.a) { opacity: .55; }
+  .paga .nome { text-decoration: line-through; }
+  .vazio { color: var(--muted); font-size: .9rem; padding: 8px 0; }
+  .barra { height: 8px; background: var(--track); border-radius: 4px; overflow: hidden; margin: 4px 0 2px; }
+  .barra i { display: block; height: 100%; border-radius: 4px; background: var(--ok); }
+  .barra i.warn { background: var(--warn); } .barra i.bad { background: var(--bad); }
+  .lim { margin-bottom: 12px; }
+  .lim-top { display: flex; justify-content: space-between; gap: 8px; align-items: center; }
+  .lim-top input { width: 110px; text-align: right; }
+  .alertas { display: grid; gap: 6px; }
+  .alerta { padding: 8px 12px; border-radius: 8px; border-left: 4px solid; background: var(--bg); font-size: .92rem; }
+  .alerta.warn { border-color: var(--warn); } .alerta.bad { border-color: var(--bad); } .alerta.info { border-color: var(--accent); }
+  .acoes { display: flex; gap: 8px; flex-wrap: wrap; }
+  .total { display: flex; justify-content: space-between; font-weight: 600; padding-top: 8px; }
+  @media (max-width: 400px) { .mes strong { min-width: 110px; } }
+</style>
+</head>
+<body>
+<header>
+  <h1>💰 Meu Orçamento</h1>
+  <div class="mes">
+    <button id="mesAnt" aria-label="Mês anterior">◀</button>
+    <strong id="mesNome"></strong>
+    <button id="mesProx" aria-label="Próximo mês">▶</button>
+  </div>
+</header>
+
+<main>
+  <section class="card wide">
+    <h2>Resumo do mês</h2>
+    <div class="resumo" id="resumo"></div>
+    <div class="alertas" id="alertas" style="margin-top:12px"></div>
+  </section>
+
+  <section class="card">
+    <h2>Renda (salário e extras)</h2>
+    <table id="tabRenda"></table>
+    <form class="linha" id="formRenda">
+      <input type="text" name="nome" placeholder="Ex.: Salário" required>
+      <input type="number" name="valor" placeholder="Valor" step="0.01" min="0" required>
+      <button class="primary">Adicionar</button>
+    </form>
+    <div style="margin-top:14px">
+      <label class="sub">Meta de economia no mês (R$)</label>
+      <form class="linha" id="formMeta" style="margin-top:4px">
+        <input type="number" name="meta" step="0.01" min="0" placeholder="0,00">
+        <button>Salvar</button>
+      </form>
+    </div>
+  </section>
+
+  <section class="card">
+    <h2>Contas fixas (luz, água, aluguel…)</h2>
+    <table id="tabContas"></table>
+    <form class="linha" id="formConta">
+      <input type="text" name="nome" placeholder="Ex.: Conta de luz" required>
+      <input type="number" name="valor" placeholder="Valor" step="0.01" min="0" required>
+      <input type="number" name="venc" placeholder="Dia venc." min="1" max="31">
+      <button class="primary">Adicionar</button>
+    </form>
+    <p class="sub">Contas fixas são copiadas automaticamente para o próximo mês (como “não pagas”).</p>
+  </section>
+
+  <section class="card">
+    <h2>Gastos do dia a dia</h2>
+    <form class="linha" id="formGasto">
+      <input type="text" name="desc" placeholder="Ex.: Mercado" required>
+      <input type="number" name="valor" placeholder="Valor" step="0.01" min="0" required>
+      <select name="cat" id="selCat"></select>
+      <input type="date" name="data" required>
+      <button class="primary">Lançar</button>
+    </form>
+    <table id="tabGastos" style="margin-top:10px"></table>
+  </section>
+
+  <section class="card">
+    <h2>Limites de gasto</h2>
+    <div class="lim">
+      <div class="lim-top"><b>Limite geral do mês</b><input type="number" id="limGeral" step="0.01" min="0" placeholder="sem limite"></div>
+      <div id="barGeral"></div>
+    </div>
+    <div id="listaLimites"></div>
+    <form class="linha" id="formCat">
+      <input type="text" name="nome" placeholder="Nova categoria" required>
+      <button>Criar categoria</button>
+    </form>
+  </section>
+
+  <section class="card wide">
+    <h2>Backup</h2>
+    <div class="acoes">
+      <button id="exportar">Exportar dados (.json)</button>
+      <button id="importarBtn">Importar dados</button>
+      <input type="file" id="importar" accept="application/json" hidden>
+      <button id="limparMes">Apagar este mês</button>
+    </div>
+    <p class="sub">Os dados ficam salvos só neste navegador. Faça backup de vez em quando.</p>
+  </section>
+</main>
+
+<script>
+(() => {
+  const CHAVE = 'meu-orcamento-v1';
+  const CATS_PADRAO = ['Mercado', 'Transporte', 'Lazer', 'Saúde', 'Delivery', 'Outros'];
+  const brl = v => (v || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+  const uid = () => Math.random().toString(36).slice(2, 10);
+  const $ = s => document.querySelector(s);
+  const esc = s => String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+
+  // ---------- Estado ----------
+  let db;
+  try { db = JSON.parse(localStorage.getItem(CHAVE)); } catch (e) { db = null; }
+  if (!db || !db.meses) db = { categorias: CATS_PADRAO.slice(), meses: {} };
+
+  const hoje = new Date();
+  let mesAtual = chaveMes(hoje);
+
+  function chaveMes(d) { return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0'); }
+  function somaMes(chave, delta) {
+    const [a, m] = chave.split('-').map(Number);
+    return chaveMes(new Date(a, m - 1 + delta, 1));
+  }
+  function salvar() { try { localStorage.setItem(CHAVE, JSON.stringify(db)); } catch (e) {} }
+
+  // Garante que o mês exista; se for novo, copia renda, contas e limites do mês anterior mais recente
+  function mes(chave = mesAtual) {
+    if (!db.meses[chave]) {
+      const anteriores = Object.keys(db.meses).filter(k => k < chave).sort();
+      const base = anteriores.length ? db.meses[anteriores[anteriores.length - 1]] : null;
+      db.meses[chave] = {
+        renda: base ? base.renda.map(r => ({ ...r, id: uid() })) : [],
+        contas: base ? base.contas.map(c => ({ ...c, id: uid(), paga: false })) : [],
+        gastos: [],
+        limites: base ? { ...base.limites } : {},
+        limiteGeral: base ? base.limiteGeral : 0,
+        meta: base ? base.meta : 0
+      };
+    }
+    return db.meses[chave];
+  }
+
+  // ---------- Cálculos ----------
+  function calc() {
+    const m = mes();
+    const renda = m.renda.reduce((s, r) => s + r.valor, 0);
+    const contas = m.contas.reduce((s, c) => s + c.valor, 0);
+    const contasPagas = m.contas.filter(c => c.paga).reduce((s, c) => s + c.valor, 0);
+    const gastos = m.gastos.reduce((s, g) => s + g.valor, 0);
+    const porCat = {};
+    m.gastos.forEach(g => porCat[g.cat] = (porCat[g.cat] || 0) + g.valor);
+    const sobra = renda - contas - gastos;
+    const disponivel = sobra - (m.meta || 0);
+
+    // dias restantes (só faz sentido no mês corrente)
+    const [a, mm] = mesAtual.split('-').map(Number);
+    const diasNoMes = new Date(a, mm, 0).getDate();
+    let diasRest;
+    if (mesAtual === chaveMes(hoje)) diasRest = diasNoMes - hoje.getDate() + 1;
+    else if (mesAtual > chaveMes(hoje)) diasRest = diasNoMes;
+    else diasRest = 0;
+    const porDia = diasRest > 0 ? Math.max(0, disponivel) / diasRest : 0;
+    return { m, renda, contas, contasPagas, gastos, porCat, sobra, disponivel, diasRest, porDia };
+  }
+
+  function nivel(gasto, limite) {
+    if (!limite) return '';
+    const p = gasto / limite;
+    return p > 1 ? 'bad' : p >= 0.8 ? 'warn' : '';
+  }
+  function barra(gasto, limite) {
+    if (!limite) return '';
+    const p = Math.min(100, (gasto / limite) * 100);
+    return `<div class="barra"><i class="${nivel(gasto, limite)}" style="width:${p}%"></i></div>
+      <div class="sub">${brl(gasto)} de ${brl(limite)} · ${gasto <= limite ? 'resta ' + brl(limite - gasto) : '<span class="bad">passou ' + brl(gasto - limite) + '</span>'}</div>`;
+  }
+
+  // ---------- Render ----------
+  function render() {
+    const c = calc();
+    const { m } = c;
+    const [a, mm] = mesAtual.split('-').map(Number);
+    const nomeMes = new Date(a, mm - 1, 1).toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' });
+    $('#mesNome').textContent = nomeMes.charAt(0).toUpperCase() + nomeMes.slice(1);
+
+    // Resumo
+    $('#resumo').innerHTML = [
+      ['Renda', brl(c.renda), ''],
+      ['Contas fixas', brl(c.contas), '', `${brl(c.contasPagas)} já pagas`],
+      ['Gastos do dia a dia', brl(c.gastos), nivel(c.gastos, m.limiteGeral)],
+      ['Sobra do mês', brl(c.sobra), c.sobra < 0 ? 'bad' : 'ok', m.meta ? `meta de economia: ${brl(m.meta)}` : ''],
+      ['Pode gastar por dia', c.diasRest ? brl(c.porDia) : '—', c.disponivel < 0 ? 'bad' : '', c.diasRest ? `${c.diasRest} dia(s) restantes` : 'mês encerrado']
+    ].map(([t, v, cls, sub]) => `<div class="stat"><span>${t}</span><b class="${cls}">${v}</b>${sub ? `<span>${sub}</span>` : ''}</div>`).join('');
+
+    // Alertas
+    const al = [];
+    if (c.renda === 0) al.push(['info', 'Comece cadastrando seu salário em “Renda”.']);
+    if (c.sobra < 0) al.push(['bad', `Você está gastando ${brl(-c.sobra)} a mais do que ganha neste mês.`]);
+    else if (m.meta && c.disponivel < 0) al.push(['warn', `Do jeito que está, você não vai bater a meta de economia (faltam ${brl(-c.disponivel)}).`]);
+    if (m.limiteGeral) {
+      const n = nivel(c.gastos, m.limiteGeral);
+      if (n === 'bad') al.push(['bad', `Limite geral estourado: ${brl(c.gastos)} de ${brl(m.limiteGeral)}.`]);
+      else if (n === 'warn') al.push(['warn', `Atenção: já usou ${Math.round(c.gastos / m.limiteGeral * 100)}% do limite geral.`]);
+    }
+    db.categorias.forEach(cat => {
+      const lim = m.limites[cat], g = c.porCat[cat] || 0, n = nivel(g, lim);
+      if (n === 'bad') al.push(['bad', `${cat}: passou do limite em ${brl(g - lim)}.`]);
+      else if (n === 'warn') al.push(['warn', `${cat}: já usou ${Math.round(g / lim * 100)}% do limite.`]);
+    });
+    if (mesAtual === chaveMes(hoje)) {
+      m.contas.filter(x => !x.paga && x.venc).forEach(x => {
+        const d = x.venc - hoje.getDate();
+        if (d < 0) al.push(['bad', `${x.nome} venceu no dia ${x.venc} e não está marcada como paga.`]);
+        else if (d <= 3) al.push(['warn', `${x.nome} vence ${d === 0 ? 'hoje' : `em ${d} dia(s)`} (${brl(x.valor)}).`]);
+      });
+    }
+    $('#alertas').innerHTML = al.map(([t, msg]) => `<div class="alerta ${t}">${esc(msg)}</div>`).join('');
+
+    // Renda
+    $('#tabRenda').innerHTML = m.renda.length
+      ? m.renda.map(r => `<tr><td>${esc(r.nome)}</td><td class="v">${brl(r.valor)}</td><td class="a"><button class="icon" data-del="renda" data-id="${r.id}" title="Remover">✕</button></td></tr>`).join('')
+        + `<tr><td><b>Total</b></td><td class="v"><b>${brl(c.renda)}</b></td><td></td></tr>`
+      : '<tr><td class="vazio">Nenhuma renda cadastrada.</td></tr>';
+    $('#formMeta').meta.value = m.meta || '';
+
+    // Contas
+    const contas = m.contas.slice().sort((x, y) => (x.paga - y.paga) || ((x.venc || 99) - (y.venc || 99)));
+    $('#tabContas').innerHTML = contas.length
+      ? contas.map(x => `<tr class="${x.paga ? 'paga' : ''}">
+          <td class="a"><input type="checkbox" data-paga="${x.id}" ${x.paga ? 'checked' : ''} title="Marcar como paga"></td>
+          <td><span class="nome">${esc(x.nome)}</span>${x.venc ? `<div class="sub">vence dia ${x.venc}</div>` : ''}</td>
+          <td class="v"><input type="number" step="0.01" min="0" value="${x.valor}" data-valconta="${x.id}" style="width:100px;text-align:right" title="Edite o valor deste mês"></td>
+          <td class="a"><button class="icon" data-del="contas" data-id="${x.id}" title="Remover">✕</button></td></tr>`).join('')
+        + `<tr><td></td><td><b>Total</b></td><td class="v"><b>${brl(c.contas)}</b></td><td></td></tr>`
+      : '<tr><td class="vazio">Nenhuma conta cadastrada.</td></tr>';
+
+    // Categorias (select)
+    const sel = $('#selCat'), atual = sel.value;
+    sel.innerHTML = db.categorias.map(k => `<option>${esc(k)}</option>`).join('');
+    if (db.categorias.includes(atual)) sel.value = atual;
+
+    // Gastos
+    const gastos = m.gastos.slice().sort((x, y) => y.data.localeCompare(x.data));
+    $('#tabGastos').innerHTML = gastos.length
+      ? gastos.map(g => `<tr><td>${esc(g.desc)}<div class="sub">${esc(g.cat)} · ${g.data.split('-').reverse().slice(0, 2).join('/')}</div></td>
+          <td class="v">${brl(g.valor)}</td>
+          <td class="a"><button class="icon" data-del="gastos" data-id="${g.id}" title="Remover">✕</button></td></tr>`).join('')
+        + `<tr><td><b>Total</b></td><td class="v"><b>${brl(c.gastos)}</b></td><td></td></tr>`
+      : '<tr><td class="vazio">Nenhum gasto lançado neste mês.</td></tr>';
+
+    // Limites
+    $('#limGeral').value = m.limiteGeral || '';
+    $('#barGeral').innerHTML = m.limiteGeral ? barra(c.gastos, m.limiteGeral) : `<div class="sub">Gasto até agora: ${brl(c.gastos)}</div>`;
+    $('#listaLimites').innerHTML = db.categorias.map(cat => {
+      const lim = m.limites[cat] || 0, g = c.porCat[cat] || 0;
+      return `<div class="lim"><div class="lim-top"><span>${esc(cat)} <button class="icon" data-delcat="${esc(cat)}" title="Excluir categoria">✕</button></span>
+        <input type="number" step="0.01" min="0" placeholder="sem limite" value="${lim || ''}" data-lim="${esc(cat)}"></div>
+        ${lim ? barra(g, lim) : `<div class="sub">Gasto: ${brl(g)}</div>`}</div>`;
+    }).join('');
+
+    salvar();
+  }
+
+  // ---------- Eventos ----------
+  const num = v => Math.round(parseFloat(String(v).replace(',', '.')) * 100) / 100 || 0;
+
+  $('#mesAnt').onclick = () => { mesAtual = somaMes(mesAtual, -1); render(); };
+  $('#mesProx').onclick = () => { mesAtual = somaMes(mesAtual, 1); render(); };
+
+  $('#formRenda').onsubmit = e => {
+    e.preventDefault(); const f = e.target;
+    mes().renda.push({ id: uid(), nome: f.nome.value.trim(), valor: num(f.valor.value) });
+    f.reset(); render();
+  };
+  $('#formMeta').onsubmit = e => { e.preventDefault(); mes().meta = num(e.target.meta.value); render(); };
+
+  $('#formConta').onsubmit = e => {
+    e.preventDefault(); const f = e.target;
+    const venc = parseInt(f.venc.value, 10);
+    mes().contas.push({ id: uid(), nome: f.nome.value.trim(), valor: num(f.valor.value), venc: venc >= 1 && venc <= 31 ? venc : null, paga: false });
+    f.reset(); render();
+  };
+
+  function dataPadrao() {
+    const f = $('#formGasto');
+    if (mesAtual === chaveMes(hoje)) f.data.value = `${chaveMes(hoje)}-${String(hoje.getDate()).padStart(2, '0')}`;
+    else f.data.value = mesAtual + '-01';
+  }
+
+  $('#formGasto').onsubmit = e => {
+    e.preventDefault(); const f = e.target;
+    const g = { id: uid(), desc: f.desc.value.trim(), valor: num(f.valor.value), cat: f.cat.value, data: f.data.value };
+    const chave = g.data.slice(0, 7);
+    const m = mes(chave);
+    const c = calc();
+    // Avisos antes de lançar (só se for no mês exibido)
+    if (chave === mesAtual) {
+      const avisos = [];
+      const lim = m.limites[g.cat];
+      if (lim && (c.porCat[g.cat] || 0) + g.valor > lim) avisos.push(`• ${g.cat} vai passar do limite (${brl((c.porCat[g.cat] || 0) + g.valor)} de ${brl(lim)})`);
+      if (m.limiteGeral && c.gastos + g.valor > m.limiteGeral) avisos.push(`• O limite geral vai estourar (${brl(c.gastos + g.valor)} de ${brl(m.limiteGeral)})`);
+      if (c.sobra - g.valor < 0) avisos.push('• Você vai ficar no negativo neste mês');
+      if (avisos.length && !confirm('Atenção!\n\n' + avisos.join('\n') + '\n\nLançar mesmo assim?')) return;
+    }
+    m.gastos.push(g);
+    f.desc.value = ''; f.valor.value = '';
+    if (chave !== mesAtual) { mesAtual = chave; render(); dataPadrao(); } else render();
+    f.desc.focus();
+  };
+
+  $('#formCat').onsubmit = e => {
+    e.preventDefault(); const nome = e.target.nome.value.trim();
+    if (nome && !db.categorias.includes(nome)) db.categorias.push(nome);
+    e.target.reset(); render();
+  };
+
+  $('#limGeral').onchange = e => { mes().limiteGeral = num(e.target.value); render(); };
+
+  document.addEventListener('click', e => {
+    const t = e.target;
+    if (t.dataset.del) {
+      const lista = mes()[t.dataset.del];
+      const i = lista.findIndex(x => x.id === t.dataset.id);
+      if (i >= 0) { lista.splice(i, 1); render(); }
+    } else if (t.dataset.delcat) {
+      const cat = t.dataset.delcat;
+      if (confirm(`Excluir a categoria "${cat}"? Gastos já lançados continuam salvos.`)) {
+        db.categorias = db.categorias.filter(x => x !== cat); render();
+      }
+    }
+  });
+  document.addEventListener('change', e => {
+    const t = e.target, m = mes();
+    if (t.dataset.paga) { const x = m.contas.find(x => x.id === t.dataset.paga); if (x) x.paga = t.checked; render(); }
+    else if (t.dataset.valconta) { const x = m.contas.find(x => x.id === t.dataset.valconta); if (x) x.valor = num(t.value); render(); }
+    else if (t.dataset.lim) { const v = num(t.value); if (v) m.limites[t.dataset.lim] = v; else delete m.limites[t.dataset.lim]; render(); }
+  });
+
+  // Backup
+  $('#exportar').onclick = () => {
+    const blob = new Blob([JSON.stringify(db, null, 2)], { type: 'application/json' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob); a.download = `orcamento-${chaveMes(hoje)}.json`; a.click();
+    setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+  };
+  $('#importarBtn').onclick = () => $('#importar').click();
+  $('#importar').onchange = e => {
+    const file = e.target.files[0]; if (!file) return;
+    file.text().then(txt => {
+      const novo = JSON.parse(txt);
+      if (!novo.meses || !novo.categorias) throw new Error();
+      if (confirm('Substituir todos os dados atuais pelos do arquivo?')) { db = novo; render(); }
+    }).catch(() => alert('Arquivo inválido.')).finally(() => e.target.value = '');
+  };
+  $('#limparMes').onclick = () => {
+    if (confirm('Apagar todos os dados deste mês?')) { delete db.meses[mesAtual]; render(); }
+  };
+
+  render(); dataPadrao();
+  $('#mesAnt').addEventListener('click', dataPadrao);
+  $('#mesProx').addEventListener('click', dataPadrao);
+})();
+</script>
+</body>
+</html>
