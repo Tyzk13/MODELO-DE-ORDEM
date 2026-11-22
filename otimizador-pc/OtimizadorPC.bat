@@ -15,7 +15,11 @@ rem ---- Pede permissao de administrador se precisar ----
 net session >nul 2>&1
 if %errorlevel% neq 0 (
     echo Pedindo permissao de administrador...
-    powershell -NoProfile -Command "Start-Process -FilePath '%~f0' -Verb RunAs"
+    if "%~1"=="" (
+        powershell -NoProfile -Command "Start-Process -FilePath '%~f0' -Verb RunAs"
+    ) else (
+        powershell -NoProfile -Command "Start-Process -FilePath '%~f0' -ArgumentList '%~1' -Verb RunAs"
+    )
     exit /b
 )
 
@@ -23,6 +27,12 @@ set "BK=%USERPROFILE%\OtimizadorPC"
 if not exist "%BK%" mkdir "%BK%"
 set "MM=HKLM\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Multimedia\SystemProfile"
 set "PONTO_FEITO=0"
+set "COPIA=%BK%\OtimizadorPC.bat"
+
+rem ---- Modos de um clique, usados pelos botoes da Area de Trabalho ----
+if /i "%~1"=="auto" goto ARG_AUTO
+if /i "%~1"=="turbo" goto ARG_TURBO
+if /i "%~1"=="limpeza" goto ARG_LIMPEZA
 
 :MENU
 cls
@@ -33,6 +43,7 @@ echo         Ryzen 5 5600G  ^|  16GB DDR4  ^|  SSD  ^|  Win 11
 echo  ==========================================================
 echo.
 echo   [1] Aplicar TUDO recomendado  - jogos + internet + limpeza
+echo   [T] TURBO antes de jogar - fecha programas pesados de fundo
 echo   [2] So JOGOS / FPS
 echo   [3] So INTERNET / ping
 echo   [4] LIMPEZA de arquivos inuteis + TRIM do SSD
@@ -42,6 +53,8 @@ echo   [7] Programas que iniciam com o Windows
 echo   [8] Reparar arquivos do Windows - SFC + DISM, demora
 echo   [9] Reparar rede - reset Winsock/IP, exige reiniciar
 echo.
+echo   [A] Criar BOTOES na Area de Trabalho - otimizar com 1 clique
+echo   [M] Limpeza AUTOMATICA toda semana
 echo   [D] DESFAZER tudo - voltar ao padrao do Windows
 echo   [0] Sair
 echo.
@@ -56,6 +69,9 @@ if "%OP%"=="6" goto OP_DIAG
 if "%OP%"=="7" goto OP_INICIO
 if "%OP%"=="8" goto OP_REPARAR
 if "%OP%"=="9" goto OP_REDE
+if /i "%OP%"=="T" goto OP_TURBO
+if /i "%OP%"=="A" goto OP_ATALHOS
+if /i "%OP%"=="M" goto OP_MANUT
 if /i "%OP%"=="D" goto OP_DESFAZER
 if "%OP%"=="0" exit /b
 goto MENU
@@ -111,7 +127,7 @@ rem ==========================================================
 :JOGOS
 echo.
 echo ===================== JOGOS / FPS =====================
-echo [1/9] Plano de energia Desempenho Maximo...
+echo [1/13] Plano de energia Desempenho Maximo...
 call :PLANO
 
 echo [2/9] Ativando Modo de Jogo do Windows...
@@ -149,6 +165,20 @@ reg add "HKCU\Control Panel\Desktop" /v MenuShowDelay /t REG_SZ /d 100 /f >nul
 echo [9/9] Desligando telemetria em segundo plano - DiagTrack...
 sc config DiagTrack start= disabled >nul 2>&1
 sc stop DiagTrack >nul 2>&1
+
+echo [10/13] Removendo propagandas e sugestoes do Windows...
+set "CDM=HKCU\Software\Microsoft\Windows\CurrentVersion\ContentDeliveryManager"
+for %%V in (SubscribedContent-338388Enabled SubscribedContent-338389Enabled SubscribedContent-353694Enabled SubscribedContent-353696Enabled SystemPaneSuggestionsEnabled SilentInstalledAppsEnabled SoftLandingEnabled) do reg add "%CDM%" /v %%V /t REG_DWORD /d 0 /f >nul
+
+echo [11/13] Desligando Widgets e Copilot - rodam em segundo plano...
+reg add "HKLM\SOFTWARE\Policies\Microsoft\Dsh" /v AllowNewsAndInterests /t REG_DWORD /d 0 /f >nul
+reg add "HKCU\Software\Policies\Microsoft\Windows\WindowsCopilot" /v TurnOffWindowsCopilot /t REG_DWORD /d 1 /f >nul
+
+echo [12/13] Tirando o atraso dos programas ao ligar o PC...
+reg add "HKCU\Software\Microsoft\Windows\CurrentVersion\Explorer\Serialize" /v StartupDelayInMSec /t REG_DWORD /d 0 /f >nul
+
+echo [13/13] Desligando hibernacao - libera uns 6 GB no SSD...
+powercfg /h off >nul 2>&1
 
 echo.
 echo   Otimizacoes de jogos aplicadas.
@@ -193,6 +223,9 @@ for /f "delims=" %%I in ('reg query "HKLM\SYSTEM\CurrentControlSet\Services\Tcpi
 
 echo [5/5] Desligando economia de energia da placa de rede...
 powershell -NoProfile -Command "Get-NetAdapter -Physical -ErrorAction SilentlyContinue | ForEach-Object { Disable-NetAdapterPowerManagement -Name $_.Name -NoRestart -ErrorAction SilentlyContinue }" >nul 2>&1
+
+echo [6/6] Impedindo o Windows de usar sua internet para mandar updates a outros PCs...
+reg add "HKLM\SOFTWARE\Policies\Microsoft\Windows\DeliveryOptimization" /v DODownloadMode /t REG_DWORD /d 0 /f >nul
 
 echo.
 echo   Otimizacoes de internet aplicadas.
@@ -369,12 +402,108 @@ for /f "delims=" %%I in ('reg query "HKLM\SYSTEM\CurrentControlSet\Services\Tcpi
     reg delete "%%I" /v TCPNoDelay /f >nul 2>&1
 )
 netsh int tcp set heuristics enabled >nul 2>&1
+reg delete "HKLM\SOFTWARE\Policies\Microsoft\Windows\DeliveryOptimization" /v DODownloadMode /f >nul 2>&1
+rem Extras
+set "CDM=HKCU\Software\Microsoft\Windows\CurrentVersion\ContentDeliveryManager"
+for %%V in (SubscribedContent-338388Enabled SubscribedContent-338389Enabled SubscribedContent-353694Enabled SubscribedContent-353696Enabled SystemPaneSuggestionsEnabled SilentInstalledAppsEnabled SoftLandingEnabled) do reg add "%CDM%" /v %%V /t REG_DWORD /d 1 /f >nul
+reg delete "HKLM\SOFTWARE\Policies\Microsoft\Dsh" /v AllowNewsAndInterests /f >nul 2>&1
+reg delete "HKCU\Software\Policies\Microsoft\Windows\WindowsCopilot" /v TurnOffWindowsCopilot /f >nul 2>&1
+reg delete "HKCU\Software\Microsoft\Windows\CurrentVersion\Explorer\Serialize" /v StartupDelayInMSec /f >nul 2>&1
+powercfg /h on >nul 2>&1
+powershell -NoProfile -Command "Unregister-ScheduledTask -TaskName 'OtimizadorPC Limpeza Semanal' -Confirm:$false -ErrorAction SilentlyContinue" >nul 2>&1
 powershell -NoProfile -Command "Get-NetAdapter -Physical -ErrorAction SilentlyContinue | ForEach-Object { Enable-NetAdapterPowerManagement -Name $_.Name -NoRestart -ErrorAction SilentlyContinue }" >nul 2>&1
 echo.
 echo  Tudo voltou ao padrao. DNS nao foi alterado - use a opcao [5] - [3] se quiser.
 echo  Se algo ainda estiver estranho, use o ponto de restauracao
 echo  "Antes do OtimizadorPC": tecla Windows - digite "rstrui".
 call :REINICIAR
+goto MENU
+
+rem ==========================================================
+rem  MODOS DE UM CLIQUE
+rem ==========================================================
+:ARG_AUTO
+cls
+echo.
+echo  ===== OTIMIZACAO AUTOMATICA - nao precisa fazer nada =====
+call :PONTO
+call :JOGOS
+call :INTERNET
+call :LIMPEZA
+echo.
+echo  ==========================================================
+echo   TUDO OTIMIZADO!
+echo  ==========================================================
+call :REINICIAR
+exit /b
+
+:ARG_TURBO
+call :TURBO
+echo.
+echo  Pode jogar! Esta janela fecha sozinha.
+timeout /t 5 >nul
+exit /b
+
+:ARG_LIMPEZA
+call :LIMPEZA
+exit /b
+
+rem ==========================================================
+:OP_TURBO
+cls
+call :TURBO
+pause
+goto MENU
+
+:TURBO
+echo.
+echo ===================== TURBO PARA JOGAR =====================
+echo [1/4] Fechando programas pesados de segundo plano...
+for %%P in (OneDrive.exe Teams.exe ms-teams.exe Widgets.exe WidgetService.exe PhoneExperienceHost.exe YourPhone.exe Copilot.exe GameBar.exe GameBarFTServer.exe) do taskkill /f /im %%P >nul 2>&1
+echo [2/4] Pausando Windows Update durante o jogo - volta sozinho depois...
+net stop wuauserv >nul 2>&1
+net stop bits >nul 2>&1
+net stop DoSvc >nul 2>&1
+echo [3/4] Ativando energia maxima...
+call :PLANO >nul
+echo [4/4] Limpando cache de DNS e temporarios...
+ipconfig /flushdns >nul
+del /f /s /q "%TEMP%\*" >nul 2>&1
+echo.
+echo   Turbo ativado. Feche tambem o navegador antes de jogar:
+echo   Chrome/Edge com muitas abas come RAM e video do 5600G.
+exit /b
+
+rem ==========================================================
+:COPIAR
+if /i not "%~f0"=="%COPIA%" copy /y "%~f0" "%COPIA%" >nul 2>&1
+exit /b
+
+:OP_ATALHOS
+cls
+call :COPIAR
+echo.
+echo  Criando botoes na Area de Trabalho...
+powershell -NoProfile -Command "$d=[Environment]::GetFolderPath('Desktop'); $w=New-Object -ComObject WScript.Shell; $a=$w.CreateShortcut($d + '\Otimizar PC.lnk'); $a.TargetPath='%COPIA%'; $a.Arguments='auto'; $a.IconLocation='shell32.dll,43'; $a.Description='Otimiza tudo com 1 clique'; $a.Save(); $b=$w.CreateShortcut($d + '\Turbo Jogo.lnk'); $b.TargetPath='%COPIA%'; $b.Arguments='turbo'; $b.IconLocation='shell32.dll,238'; $b.Description='Use antes de jogar'; $b.Save(); $c=$w.CreateShortcut($d + '\Menu Otimizador.lnk'); $c.TargetPath='%COPIA%'; $c.IconLocation='shell32.dll,21'; $c.Save(); Write-Host '  Botoes criados!' -ForegroundColor Green"
+echo.
+echo   "Otimizar PC"      - faz TUDO sozinho. Use 1 vez por mes.
+echo   "Turbo Jogo"       - clique antes de abrir um jogo.
+echo   "Menu Otimizador"  - abre este menu.
+echo.
+echo   O programa ficou guardado em: %BK%
+pause
+goto MENU
+
+rem ==========================================================
+:OP_MANUT
+cls
+call :COPIAR
+echo.
+echo  Agendando limpeza automatica todo domingo ao meio-dia.
+echo  Se o PC estiver desligado, ela roda na proxima vez que ligar.
+powershell -NoProfile -Command "$a=New-ScheduledTaskAction -Execute '%COPIA%' -Argument 'limpeza'; $t=New-ScheduledTaskTrigger -Weekly -DaysOfWeek Sunday -At 12pm; $s=New-ScheduledTaskSettingsSet -StartWhenAvailable -DontStopIfGoingOnBatteries -AllowStartIfOnBatteries; Register-ScheduledTask -TaskName 'OtimizadorPC Limpeza Semanal' -Action $a -Trigger $t -Settings $s -RunLevel Highest -Force | Out-Null; Write-Host '  Limpeza semanal agendada!' -ForegroundColor Green"
+echo  Para cancelar, use a opcao [D] DESFAZER.
+pause
 goto MENU
 
 rem ==========================================================

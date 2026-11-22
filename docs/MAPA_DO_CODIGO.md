@@ -3,6 +3,12 @@
 Gerado por `scripts/mapa_do_codigo.py` — rode de novo depois de criar, mover ou mudar arquivos.
 Para ler uma função: Read com `offset` = linha e `limit` ≈ 40–80. Não leia arquivos inteiros sem necessidade.
 
+## Pastas pesadas (binários: imagens, modelos, áudio, vídeo) — não abrir
+
+| Pasta | Arquivos | Tamanho |
+|---|---|---|
+| `otimizador-pc/` | 1 | 0.0 MB |
+
 ## Arquivos de texto/código
 
 | Arquivo | Linhas | Tamanho |
