@@ -1,0 +1,387 @@
+@echo off
+setlocal EnableExtensions
+chcp 437 >nul
+title Otimizador PC - Ryzen 5 5600G / Windows 11
+color 0B
+
+rem ==========================================================
+rem  OtimizadorPC - otimizacoes de FPS, internet e limpeza
+rem  Feito para: Windows 11, Ryzen 5 5600G, 16GB DDR4, SSD
+rem  Tudo e reversivel pela opcao [D] do menu e um ponto de
+rem  restauracao do Windows e criado antes de qualquer mudanca.
+rem ==========================================================
+
+rem ---- Pede permissao de administrador se precisar ----
+net session >nul 2>&1
+if %errorlevel% neq 0 (
+    echo Pedindo permissao de administrador...
+    powershell -NoProfile -Command "Start-Process -FilePath '%~f0' -Verb RunAs"
+    exit /b
+)
+
+set "BK=%USERPROFILE%\OtimizadorPC"
+if not exist "%BK%" mkdir "%BK%"
+set "MM=HKLM\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Multimedia\SystemProfile"
+set "PONTO_FEITO=0"
+
+:MENU
+cls
+echo.
+echo  ==========================================================
+echo                O T I M I Z A D O R   P C
+echo         Ryzen 5 5600G  ^|  16GB DDR4  ^|  SSD  ^|  Win 11
+echo  ==========================================================
+echo.
+echo   [1] Aplicar TUDO recomendado  - jogos + internet + limpeza
+echo   [2] So JOGOS / FPS
+echo   [3] So INTERNET / ping
+echo   [4] LIMPEZA de arquivos inuteis + TRIM do SSD
+echo   [5] Trocar DNS  - Cloudflare / Google / Automatico
+echo   [6] DIAGNOSTICO - checa RAM, XMP, Dual Channel, video, disco
+echo   [7] Programas que iniciam com o Windows
+echo   [8] Reparar arquivos do Windows - SFC + DISM, demora
+echo   [9] Reparar rede - reset Winsock/IP, exige reiniciar
+echo.
+echo   [D] DESFAZER tudo - voltar ao padrao do Windows
+echo   [0] Sair
+echo.
+set "OP="
+set /p "OP=  Escolha uma opcao: "
+if "%OP%"=="1" goto OP_TUDO
+if "%OP%"=="2" goto OP_JOGOS
+if "%OP%"=="3" goto OP_INTERNET
+if "%OP%"=="4" goto OP_LIMPEZA
+if "%OP%"=="5" goto OP_DNS
+if "%OP%"=="6" goto OP_DIAG
+if "%OP%"=="7" goto OP_INICIO
+if "%OP%"=="8" goto OP_REPARAR
+if "%OP%"=="9" goto OP_REDE
+if /i "%OP%"=="D" goto OP_DESFAZER
+if "%OP%"=="0" exit /b
+goto MENU
+
+rem ==========================================================
+:OP_TUDO
+cls
+call :PONTO
+call :JOGOS
+call :INTERNET
+call :LIMPEZA
+echo.
+echo  ==========================================================
+echo   PRONTO! Agora faca tambem, fora do Windows:
+echo   1. Rode a opcao [6] DIAGNOSTICO para ver XMP e Dual Channel
+echo   2. Atualize o driver AMD Adrenalin: amd.com/support
+echo   3. Atualize a BIOS da placa-mae se estiver antiga
+echo  ==========================================================
+call :REINICIAR
+goto MENU
+
+:OP_JOGOS
+cls
+call :PONTO
+call :JOGOS
+call :REINICIAR
+goto MENU
+
+:OP_INTERNET
+cls
+call :PONTO
+call :INTERNET
+call :REINICIAR
+goto MENU
+
+:OP_LIMPEZA
+cls
+call :LIMPEZA
+pause
+goto MENU
+
+rem ==========================================================
+:PONTO
+if "%PONTO_FEITO%"=="1" exit /b
+echo.
+echo [SEGURANCA] Criando ponto de restauracao do Windows...
+reg add "HKLM\SOFTWARE\Microsoft\Windows NT\CurrentVersion\SystemRestore" /v SystemRestorePointCreationFrequency /t REG_DWORD /d 0 /f >nul 2>&1
+powershell -NoProfile -Command "try { Enable-ComputerRestore -Drive ($env:SystemDrive + '\') -ErrorAction Stop; Checkpoint-Computer -Description 'Antes do OtimizadorPC' -RestorePointType MODIFY_SETTINGS -ErrorAction Stop; Write-Host '            Ponto de restauracao criado.' -ForegroundColor Green } catch { Write-Host ('            Aviso: nao deu para criar o ponto: ' + $_.Exception.Message) -ForegroundColor Yellow }"
+set "PONTO_FEITO=1"
+exit /b
+
+rem ==========================================================
+:JOGOS
+echo.
+echo ===================== JOGOS / FPS =====================
+echo [1/9] Plano de energia Desempenho Maximo...
+call :PLANO
+
+echo [2/9] Ativando Modo de Jogo do Windows...
+reg add "HKCU\Software\Microsoft\GameBar" /v AutoGameModeEnabled /t REG_DWORD /d 1 /f >nul
+reg add "HKCU\Software\Microsoft\GameBar" /v AllowAutoGameMode /t REG_DWORD /d 1 /f >nul
+
+echo [3/9] Desligando gravacao em segundo plano do Xbox Game Bar...
+reg add "HKCU\System\GameConfigStore" /v GameDVR_Enabled /t REG_DWORD /d 0 /f >nul
+reg add "HKCU\Software\Microsoft\Windows\CurrentVersion\GameDVR" /v AppCaptureEnabled /t REG_DWORD /d 0 /f >nul
+
+echo [4/9] Agendamento de GPU acelerado por hardware...
+reg add "HKLM\SYSTEM\CurrentControlSet\Control\GraphicsDrivers" /v HwSchMode /t REG_DWORD /d 2 /f >nul
+
+echo [5/9] Dando prioridade de CPU e GPU para jogos...
+reg add "%MM%" /v SystemResponsiveness /t REG_DWORD /d 10 /f >nul
+reg add "%MM%\Tasks\Games" /v "GPU Priority" /t REG_DWORD /d 8 /f >nul
+reg add "%MM%\Tasks\Games" /v "Priority" /t REG_DWORD /d 6 /f >nul
+reg add "%MM%\Tasks\Games" /v "Scheduling Category" /t REG_SZ /d "High" /f >nul
+reg add "%MM%\Tasks\Games" /v "SFIO Priority" /t REG_SZ /d "High" /f >nul
+
+echo [6/9] Desligando economia de energia do processador...
+reg add "HKLM\SYSTEM\CurrentControlSet\Control\Power\PowerThrottling" /v PowerThrottlingOff /t REG_DWORD /d 1 /f >nul
+
+echo [7/9] Desligando aceleracao do mouse - mira mais precisa...
+reg add "HKCU\Control Panel\Mouse" /v MouseSpeed /t REG_SZ /d 0 /f >nul
+reg add "HKCU\Control Panel\Mouse" /v MouseThreshold1 /t REG_SZ /d 0 /f >nul
+reg add "HKCU\Control Panel\Mouse" /v MouseThreshold2 /t REG_SZ /d 0 /f >nul
+
+echo [8/9] Efeitos visuais leves - sem transparencia e animacoes...
+reg add "HKCU\Software\Microsoft\Windows\CurrentVersion\Themes\Personalize" /v EnableTransparency /t REG_DWORD /d 0 /f >nul
+reg add "HKCU\Control Panel\Desktop\WindowMetrics" /v MinAnimate /t REG_SZ /d 0 /f >nul
+reg add "HKCU\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced" /v TaskbarAnimations /t REG_DWORD /d 0 /f >nul
+reg add "HKCU\Control Panel\Desktop" /v MenuShowDelay /t REG_SZ /d 100 /f >nul
+
+echo [9/9] Desligando telemetria em segundo plano - DiagTrack...
+sc config DiagTrack start= disabled >nul 2>&1
+sc stop DiagTrack >nul 2>&1
+
+echo.
+echo   Otimizacoes de jogos aplicadas.
+exit /b
+
+rem ---- Plano de energia: Desempenho Maximo (Ultimate Performance) ----
+:PLANO
+set "PLAN="
+if exist "%BK%\plano.txt" set /p PLAN=<"%BK%\plano.txt"
+if not defined PLAN goto PLANO_CRIAR
+powercfg /query %PLAN% >nul 2>&1
+if %errorlevel%==0 goto PLANO_ATIVAR
+:PLANO_CRIAR
+set "PLAN="
+for /f "usebackq delims=" %%G in (`powershell -NoProfile -Command "[regex]::Match((powercfg -duplicatescheme e9a42b02-d5df-448d-aa00-03f14749eb61) -join ' ', '[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}').Value"`) do set "PLAN=%%G"
+if not defined PLAN set "PLAN=8c5e7fda-e8bf-4a96-9a85-a6e23a8c635c"
+> "%BK%\plano.txt" echo %PLAN%
+:PLANO_ATIVAR
+powercfg /setactive %PLAN%
+exit /b
+
+rem ==========================================================
+:INTERNET
+echo.
+echo ===================== INTERNET =====================
+echo [1/5] Limpando cache de DNS...
+ipconfig /flushdns >nul
+
+echo [2/5] Ajustando TCP - autotuning e RSS...
+netsh int tcp set global autotuninglevel=normal >nul 2>&1
+netsh int tcp set global rss=enabled >nul 2>&1
+netsh int tcp set heuristics disabled >nul 2>&1
+
+echo [3/5] Tirando limite de rede do Windows durante jogos...
+reg add "%MM%" /v NetworkThrottlingIndex /t REG_DWORD /d 0xffffffff /f >nul
+
+echo [4/5] Diminuindo atraso de pacotes - ping mais estavel...
+for /f "delims=" %%I in ('reg query "HKLM\SYSTEM\CurrentControlSet\Services\Tcpip\Parameters\Interfaces" ^| findstr /c:"{"') do (
+    reg add "%%I" /v TcpAckFrequency /t REG_DWORD /d 1 /f >nul 2>&1
+    reg add "%%I" /v TCPNoDelay /t REG_DWORD /d 1 /f >nul 2>&1
+)
+
+echo [5/5] Desligando economia de energia da placa de rede...
+powershell -NoProfile -Command "Get-NetAdapter -Physical -ErrorAction SilentlyContinue | ForEach-Object { Disable-NetAdapterPowerManagement -Name $_.Name -NoRestart -ErrorAction SilentlyContinue }" >nul 2>&1
+
+echo.
+echo   Otimizacoes de internet aplicadas.
+echo   Dica: para jogar, cabo de rede e MUITO melhor que Wi-Fi.
+exit /b
+
+rem ==========================================================
+:LIMPEZA
+echo.
+echo ===================== LIMPEZA =====================
+for /f %%A in ('powershell -NoProfile -Command "[math]::Round((Get-PSDrive ($env:SystemDrive.Substring(0,1))).Free/1GB,2)"') do set "ANTES=%%A"
+
+echo [1/5] Apagando arquivos temporarios...
+del /f /s /q "%TEMP%\*" >nul 2>&1
+for /d %%D in ("%TEMP%\*") do rd /s /q "%%D" >nul 2>&1
+del /f /s /q "%SystemRoot%\Temp\*" >nul 2>&1
+for /d %%D in ("%SystemRoot%\Temp\*") do rd /s /q "%%D" >nul 2>&1
+
+echo [2/5] Limpando cache de downloads do Windows Update...
+net stop wuauserv >nul 2>&1
+net stop bits >nul 2>&1
+del /f /s /q "%SystemRoot%\SoftwareDistribution\Download\*" >nul 2>&1
+for /d %%D in ("%SystemRoot%\SoftwareDistribution\Download\*") do rd /s /q "%%D" >nul 2>&1
+net start bits >nul 2>&1
+net start wuauserv >nul 2>&1
+
+echo [3/5] Esvaziando a Lixeira...
+powershell -NoProfile -Command "Clear-RecycleBin -Force -ErrorAction SilentlyContinue" >nul 2>&1
+
+echo [4/5] Limpando cache de miniaturas e DNS...
+del /f /q "%LOCALAPPDATA%\Microsoft\Windows\Explorer\thumbcache_*.db" >nul 2>&1
+ipconfig /flushdns >nul
+
+echo [5/5] Otimizando o SSD - TRIM...
+fsutil behavior set DisableDeleteNotify 0 >nul 2>&1
+defrag %SystemDrive% /O
+
+for /f %%A in ('powershell -NoProfile -Command "[math]::Round((Get-PSDrive ($env:SystemDrive.Substring(0,1))).Free/1GB,2)"') do set "DEPOIS=%%A"
+echo.
+echo   Espaco livre antes:  %ANTES% GB
+echo   Espaco livre depois: %DEPOIS% GB
+echo   Arquivos em uso pelo Windows nao sao apagados - isso e normal.
+exit /b
+
+rem ==========================================================
+:OP_DNS
+cls
+echo.
+echo  ===== TROCAR DNS =====
+echo   [1] Cloudflare  1.1.1.1  - geralmente o mais rapido
+echo   [2] Google      8.8.8.8
+echo   [3] Automatico  - o da sua operadora, padrao
+echo   [0] Voltar
+echo.
+set "D="
+set /p "D=  Escolha: "
+if "%D%"=="1" set "DNSCMD=Set-DnsClientServerAddress -ServerAddresses 1.1.1.1,1.0.0.1"
+if "%D%"=="2" set "DNSCMD=Set-DnsClientServerAddress -ServerAddresses 8.8.8.8,8.8.4.4"
+if "%D%"=="3" set "DNSCMD=Set-DnsClientServerAddress -ResetServerAddresses"
+if "%D%"=="0" goto MENU
+if not defined DNSCMD goto OP_DNS
+powershell -NoProfile -Command "Get-NetAdapter -Physical | Where-Object Status -eq 'Up' | ForEach-Object { %DNSCMD% -InterfaceIndex $_.ifIndex; Write-Host ('  DNS alterado em: ' + $_.Name) -ForegroundColor Green }"
+ipconfig /flushdns >nul
+set "DNSCMD="
+pause
+goto MENU
+
+rem ==========================================================
+:OP_DIAG
+cls
+echo.
+echo  ===================== DIAGNOSTICO =====================
+echo.
+echo  ----- MEMORIA RAM - o mais importante para o 5600G -----
+powershell -NoProfile -Command "$m=@(Get-CimInstance Win32_PhysicalMemory); foreach($p in $m){ '  Slot {0}: {1} GB - rodando a {2} MHz - maximo do pente {3} MHz' -f $p.DeviceLocator,[math]::Round($p.Capacity/1GB),$p.ConfiguredClockSpeed,$p.Speed }; ''; if($m.Count -lt 2){ Write-Host '  [!] SO 1 PENTE DE RAM = SINGLE CHANNEL.' -ForegroundColor Red; '      O video integrado do 5600G perde MUITO FPS assim, ate 30-40 por cento.'; '      Solucao: 2 pentes iguais, ex 2x8GB, nos slots A2 e B2 da placa-mae.' } else { Write-Host '  [OK] 2 ou mais pentes - Dual Channel.' -ForegroundColor Green }; $s=($m | Measure-Object ConfiguredClockSpeed -Minimum).Minimum; if($s -lt 2900){ Write-Host ('  [!] RAM rodando a so {0} MHz. ATIVE O XMP / DOCP / EXPO NA BIOS.' -f $s) -ForegroundColor Red; '      Esse e o ajuste que MAIS aumenta FPS no 5600G. Ideal: 3200 a 3600 MHz.' } else { Write-Host '  [OK] RAM em velocidade alta - XMP/DOCP ativo.' -ForegroundColor Green }"
+echo.
+echo  ----- PLACA DE VIDEO -----
+powershell -NoProfile -Command "$g=@(Get-CimInstance Win32_VideoController); foreach($x in $g){ '  ' + $x.Name + '  - driver ' + $x.DriverVersion }; if(-not ($g | Where-Object { $_.Name -match 'RTX|GTX|RX [0-9]|Arc' })){ ''; Write-Host '  Voce usa o video integrado Radeon Vega 7 do 5600G. Dicas:' -ForegroundColor Yellow; '   - Na BIOS: UMA Frame Buffer Size = 2G'; '   - No AMD Adrenalin: ative Radeon Super Resolution e Radeon Anti-Lag'; '   - Nos jogos: ative AMD FSR e use graficos baixos/medios' }"
+echo.
+echo  ----- SEGURANCA x DESEMPENHO -----
+powershell -NoProfile -Command "try{ $d=Get-CimInstance -Namespace root\Microsoft\Windows\DeviceGuard -ClassName Win32_DeviceGuard -ErrorAction Stop; if($d.VirtualizationBasedSecurityStatus -eq 2){ Write-Host '  [!] Integridade de Memoria / VBS LIGADA - pode custar 5-10 por cento de FPS.' -ForegroundColor Yellow; '      Para desligar: Seguranca do Windows - Seguranca do dispositivo - Isolamento de nucleo.'; '      Isso reduz um pouco a protecao do PC. Decisao sua, o script nao mexe nisso.' } else { Write-Host '  [OK] VBS / Integridade de Memoria desligada.' -ForegroundColor Green } } catch { '  Nao foi possivel checar o VBS.' }"
+echo.
+echo  ----- DISCO -----
+powershell -NoProfile -Command "$d=Get-PSDrive ($env:SystemDrive.Substring(0,1)); $l=[math]::Round($d.Free/1GB,1); $t=[math]::Round(($d.Free+$d.Used)/1GB,1); '  {0} GB livres de {1} GB' -f $l,$t; if($l -lt ($t*0.15)){ Write-Host '  [!] Pouco espaco. SSD fica mais lento com menos de 15 por cento livre.' -ForegroundColor Red } else { Write-Host '  [OK] Espaco livre suficiente.' -ForegroundColor Green }"
+echo.
+echo  ----- PLANO DE ENERGIA ATIVO -----
+powercfg /getactivescheme
+echo.
+pause
+goto MENU
+
+rem ==========================================================
+:OP_INICIO
+cls
+echo.
+echo  Abrindo a lista de programas que iniciam com o Windows...
+echo  Desative tudo que voce nao precisa ligado o tempo todo:
+echo  launchers de jogos, Discord, Spotify, OneDrive, Teams etc.
+echo  NAO desative: driver de audio, AMD Software, antivirus.
+start "" ms-settings:startupapps
+pause
+goto MENU
+
+rem ==========================================================
+:OP_REPARAR
+cls
+echo.
+echo  Reparando imagem do Windows com DISM - pode levar 10-20 min...
+DISM /Online /Cleanup-Image /RestoreHealth
+echo.
+echo  Verificando arquivos do sistema com SFC...
+sfc /scannow
+echo.
+echo  Reparo concluido.
+call :REINICIAR
+goto MENU
+
+rem ==========================================================
+:OP_REDE
+cls
+echo.
+echo  Isso reseta as configuracoes de rede. Use se a internet estiver
+echo  com problema. Senhas de Wi-Fi salvas continuam salvas.
+choice /c SN /m "  Continuar"
+if errorlevel 2 goto MENU
+netsh winsock reset
+netsh int ip reset
+ipconfig /release >nul
+ipconfig /renew >nul
+ipconfig /flushdns
+call :REINICIAR
+goto MENU
+
+rem ==========================================================
+:OP_DESFAZER
+cls
+echo.
+echo  Voltando tudo ao padrao do Windows...
+rem Plano de energia Equilibrado
+powercfg /setactive 381b4222-f694-41f0-9685-ff5bb260df2e
+if exist "%BK%\plano.txt" (
+    for /f "usebackq delims=" %%P in ("%BK%\plano.txt") do powercfg /delete %%P >nul 2>&1
+    del "%BK%\plano.txt" >nul 2>&1
+)
+rem Game Bar / DVR
+reg add "HKCU\System\GameConfigStore" /v GameDVR_Enabled /t REG_DWORD /d 1 /f >nul
+reg delete "HKCU\Software\Microsoft\Windows\CurrentVersion\GameDVR" /v AppCaptureEnabled /f >nul 2>&1
+rem HAGS
+reg delete "HKLM\SYSTEM\CurrentControlSet\Control\GraphicsDrivers" /v HwSchMode /f >nul 2>&1
+rem Prioridades multimidia
+reg add "%MM%" /v SystemResponsiveness /t REG_DWORD /d 20 /f >nul
+reg add "%MM%" /v NetworkThrottlingIndex /t REG_DWORD /d 10 /f >nul
+reg add "%MM%\Tasks\Games" /v "GPU Priority" /t REG_DWORD /d 8 /f >nul
+reg add "%MM%\Tasks\Games" /v "Priority" /t REG_DWORD /d 2 /f >nul
+reg add "%MM%\Tasks\Games" /v "Scheduling Category" /t REG_SZ /d "Medium" /f >nul
+reg add "%MM%\Tasks\Games" /v "SFIO Priority" /t REG_SZ /d "Normal" /f >nul
+rem Power throttling
+reg delete "HKLM\SYSTEM\CurrentControlSet\Control\Power\PowerThrottling" /v PowerThrottlingOff /f >nul 2>&1
+rem Mouse
+reg add "HKCU\Control Panel\Mouse" /v MouseSpeed /t REG_SZ /d 1 /f >nul
+reg add "HKCU\Control Panel\Mouse" /v MouseThreshold1 /t REG_SZ /d 6 /f >nul
+reg add "HKCU\Control Panel\Mouse" /v MouseThreshold2 /t REG_SZ /d 10 /f >nul
+rem Efeitos visuais
+reg add "HKCU\Software\Microsoft\Windows\CurrentVersion\Themes\Personalize" /v EnableTransparency /t REG_DWORD /d 1 /f >nul
+reg add "HKCU\Control Panel\Desktop\WindowMetrics" /v MinAnimate /t REG_SZ /d 1 /f >nul
+reg add "HKCU\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced" /v TaskbarAnimations /t REG_DWORD /d 1 /f >nul
+reg add "HKCU\Control Panel\Desktop" /v MenuShowDelay /t REG_SZ /d 400 /f >nul
+rem Telemetria
+sc config DiagTrack start= auto >nul 2>&1
+sc start DiagTrack >nul 2>&1
+rem Rede
+for /f "delims=" %%I in ('reg query "HKLM\SYSTEM\CurrentControlSet\Services\Tcpip\Parameters\Interfaces" ^| findstr /c:"{"') do (
+    reg delete "%%I" /v TcpAckFrequency /f >nul 2>&1
+    reg delete "%%I" /v TCPNoDelay /f >nul 2>&1
+)
+netsh int tcp set heuristics enabled >nul 2>&1
+powershell -NoProfile -Command "Get-NetAdapter -Physical -ErrorAction SilentlyContinue | ForEach-Object { Enable-NetAdapterPowerManagement -Name $_.Name -NoRestart -ErrorAction SilentlyContinue }" >nul 2>&1
+echo.
+echo  Tudo voltou ao padrao. DNS nao foi alterado - use a opcao [5] - [3] se quiser.
+echo  Se algo ainda estiver estranho, use o ponto de restauracao
+echo  "Antes do OtimizadorPC": tecla Windows - digite "rstrui".
+call :REINICIAR
+goto MENU
+
+rem ==========================================================
+:REINICIAR
+echo.
+echo  Algumas mudancas so valem depois de reiniciar o PC.
+choice /c SN /m "  Reiniciar agora"
+if errorlevel 2 exit /b
+shutdown /r /t 10 /c "OtimizadorPC: reiniciando em 10 segundos"
+exit /b

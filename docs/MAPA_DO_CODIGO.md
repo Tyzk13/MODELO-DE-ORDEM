@@ -8,6 +8,7 @@ Para ler uma função: Read com `offset` = linha e `limit` ≈ 40–80. Não lei
 | Arquivo | Linhas | Tamanho |
 |---|---|---|
 | `index.html` | 953 | 58 KB |
+| `scripts/mapa_do_codigo.py` | 78 | 5 KB |
 
 Outros textos: `CLAUDE.md`, `README.md`
 
