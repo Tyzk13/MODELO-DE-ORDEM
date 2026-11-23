@@ -33,6 +33,7 @@ rem ---- Modos de um clique, usados pelos botoes da Area de Trabalho ----
 if /i "%~1"=="auto" goto ARG_AUTO
 if /i "%~1"=="turbo" goto ARG_TURBO
 if /i "%~1"=="limpeza" goto ARG_LIMPEZA
+if /i "%~1"=="foco" goto ARG_FOCO
 
 :MENU
 cls
@@ -44,6 +45,8 @@ echo  ==========================================================
 echo.
 echo   [1] Aplicar TUDO recomendado  - jogos + internet + limpeza
 echo   [T] TURBO antes de jogar - fecha programas pesados de fundo
+echo   [F] MODO FOCO NO JOGO - processador prioriza o seu jogo
+echo   [S] MAIS FPS: upscaling e geracao de quadros, tipo Lossless Scaling
 echo   [2] So JOGOS / FPS
 echo   [3] So INTERNET / ping
 echo   [4] LIMPEZA de arquivos inuteis + TRIM do SSD
@@ -70,6 +73,8 @@ if "%OP%"=="7" goto OP_INICIO
 if "%OP%"=="8" goto OP_REPARAR
 if "%OP%"=="9" goto OP_REDE
 if /i "%OP%"=="T" goto OP_TURBO
+if /i "%OP%"=="F" goto OP_FOCO
+if /i "%OP%"=="S" goto OP_ESCALA
 if /i "%OP%"=="A" goto OP_ATALHOS
 if /i "%OP%"=="M" goto OP_MANUT
 if /i "%OP%"=="D" goto OP_DESFAZER
@@ -127,7 +132,7 @@ rem ==========================================================
 :JOGOS
 echo.
 echo ===================== JOGOS / FPS =====================
-echo [1/13] Plano de energia Desempenho Maximo...
+echo [1/14] Plano de energia Desempenho Maximo...
 call :PLANO
 
 echo [2/9] Ativando Modo de Jogo do Windows...
@@ -180,6 +185,9 @@ reg add "HKCU\Software\Microsoft\Windows\CurrentVersion\Explorer\Serialize" /v S
 echo [13/13] Desligando hibernacao - libera uns 6 GB no SSD...
 powercfg /h off >nul 2>&1
 
+echo [14/14] Processador focado no programa em primeiro plano - o jogo...
+reg add "HKLM\SYSTEM\CurrentControlSet\Control\PriorityControl" /v Win32PrioritySeparation /t REG_DWORD /d 38 /f >nul
+
 echo.
 echo   Otimizacoes de jogos aplicadas.
 exit /b
@@ -197,6 +205,11 @@ for /f "usebackq delims=" %%G in (`powershell -NoProfile -Command "[regex]::Matc
 if not defined PLAN set "PLAN=8c5e7fda-e8bf-4a96-9a85-a6e23a8c635c"
 > "%BK%\plano.txt" echo %PLAN%
 :PLANO_ATIVAR
+rem Ryzen: turbo agressivo, clock minimo alto e todos os nucleos sempre acordados
+powercfg /setacvalueindex %PLAN% sub_processor PERFBOOSTMODE 2 >nul 2>&1
+powercfg /setacvalueindex %PLAN% sub_processor PROCTHROTTLEMIN 100 >nul 2>&1
+powercfg /setacvalueindex %PLAN% sub_processor PROCTHROTTLEMAX 100 >nul 2>&1
+powercfg /setacvalueindex %PLAN% sub_processor CPMINCORES 100 >nul 2>&1
 powercfg /setactive %PLAN%
 exit /b
 
@@ -410,6 +423,12 @@ reg delete "HKLM\SOFTWARE\Policies\Microsoft\Dsh" /v AllowNewsAndInterests /f >n
 reg delete "HKCU\Software\Policies\Microsoft\Windows\WindowsCopilot" /v TurnOffWindowsCopilot /f >nul 2>&1
 reg delete "HKCU\Software\Microsoft\Windows\CurrentVersion\Explorer\Serialize" /v StartupDelayInMSec /f >nul 2>&1
 powercfg /h on >nul 2>&1
+reg add "HKLM\SYSTEM\CurrentControlSet\Control\PriorityControl" /v Win32PrioritySeparation /t REG_DWORD /d 2 /f >nul
+if exist "%BK%\jogos.txt" (
+    for /f "usebackq delims=" %%J in ("%BK%\jogos.txt") do reg delete "HKLM\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Image File Execution Options\%%J\PerfOptions" /f >nul 2>&1
+    del "%BK%\jogos.txt" >nul 2>&1
+)
+del "%BK%\ultimo_jogo.txt" >nul 2>&1
 powershell -NoProfile -Command "Unregister-ScheduledTask -TaskName 'OtimizadorPC Limpeza Semanal' -Confirm:$false -ErrorAction SilentlyContinue" >nul 2>&1
 powershell -NoProfile -Command "Get-NetAdapter -Physical -ErrorAction SilentlyContinue | ForEach-Object { Enable-NetAdapterPowerManagement -Name $_.Name -NoRestart -ErrorAction SilentlyContinue }" >nul 2>&1
 echo.
@@ -475,6 +494,150 @@ echo   Chrome/Edge com muitas abas come RAM e video do 5600G.
 exit /b
 
 rem ==========================================================
+rem  MODO FOCO NO JOGO
+rem ==========================================================
+:ARG_FOCO
+set "JOGO="
+if exist "%BK%\ultimo_jogo.txt" set /p JOGO=<"%BK%\ultimo_jogo.txt"
+if defined JOGO goto FOCO_VIGIAR
+echo  Nenhum jogo escolhido ainda. Abra o menu e use a opcao [F] primeiro.
+pause
+exit /b
+
+:OP_FOCO
+cls
+echo.
+echo  ===================== MODO FOCO NO JOGO =====================
+echo  O processador passa a dar prioridade ALTA ao seu jogo e os
+echo  programas de fundo - navegador, Spotify, Steam - ficam com
+echo  prioridade baixa enquanto voce joga.
+echo.
+echo  Dica: abra o jogo antes, assim ele aparece na lista abaixo.
+echo.
+echo  Programas com janela aberta agora:
+powershell -NoProfile -Command "Get-Process | Where-Object { $_.MainWindowTitle } | Sort-Object Name -Unique | ForEach-Object { '    ' + $_.Name + '.exe   -   ' + $_.MainWindowTitle }"
+echo.
+echo  Exemplos: cs2.exe  GTA5.exe  RobloxPlayerBeta.exe  FortniteClient-Win64-Shipping.exe
+echo.
+set "JOGO="
+set /p "JOGO=  Nome do .exe do jogo, ou Enter para voltar: "
+if not defined JOGO goto MENU
+set "JOGO=%JOGO:"=%"
+if /i not "%JOGO:~-4%"==".exe" set "JOGO=%JOGO%.exe"
+call :REGISTRAR_JOGO
+echo.
+echo   [1] So registrar - prioridade alta toda vez que o jogo abrir
+echo   [2] Registrar e VIGIAR - quando o jogo abrir ativa o Turbo e o
+echo       foco, e quando o jogo fechar tudo volta ao normal sozinho
+echo.
+choice /c 12 /m "  Escolha"
+if errorlevel 2 goto FOCO_VIGIAR
+pause
+goto MENU
+
+:REGISTRAR_JOGO
+reg add "HKLM\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Image File Execution Options\%JOGO%\PerfOptions" /v CpuPriorityClass /t REG_DWORD /d 3 /f >nul
+findstr /x /i /c:"%JOGO%" "%BK%\jogos.txt" >nul 2>&1 || >>"%BK%\jogos.txt" echo %JOGO%
+>"%BK%\ultimo_jogo.txt" echo %JOGO%
+echo.
+echo   %JOGO% registrado: o Windows vai abrir ele sempre com prioridade ALTA.
+echo   Obs: alguns jogos com anti-cheat ignoram isso, sem problema nenhum.
+exit /b
+
+:FOCO_VIGIAR
+cls
+set "NOME=%JOGO:~0,-4%"
+title Modo Foco - vigiando %JOGO%
+echo.
+echo  ===================== MODO FOCO ATIVO =====================
+echo   Vigiando: %JOGO%
+echo   Pode abrir o jogo. Deixe esta janela aberta - pode minimizar.
+echo   Para parar, e so fechar esta janela.
+echo  ==========================================================
+:FOCO_ESPERA
+tasklist /fi "imagename eq %JOGO%" /fo csv /nh 2>nul | find /i "%JOGO%" >nul
+if errorlevel 1 (
+    timeout /t 3 /nobreak >nul
+    goto FOCO_ESPERA
+)
+echo.
+echo  [%time:~0,8%] Jogo aberto! Ativando Turbo e foco no processador...
+call :TURBO >nul
+call :FOCO_APLICAR
+echo  [%time:~0,8%] Pronto. Bom jogo!
+:FOCO_JOGANDO
+timeout /t 5 /nobreak >nul
+tasklist /fi "imagename eq %JOGO%" /fo csv /nh 2>nul | find /i "%JOGO%" >nul
+if not errorlevel 1 goto FOCO_JOGANDO
+echo  [%time:~0,8%] Jogo fechado. Voltando tudo ao normal...
+call :FOCO_RESTAURAR
+echo  [%time:~0,8%] Esperando o jogo abrir de novo...
+goto FOCO_ESPERA
+
+:FOCO_APLICAR
+powershell -NoProfile -Command "Get-Process -Name '%NOME%' -ErrorAction SilentlyContinue | ForEach-Object { try { $_.PriorityClass='High' } catch {} }; Get-Process -Name chrome,msedge,firefox,opera,brave,Spotify,steamwebhelper,EpicGamesLauncher,EpicWebHelper,RiotClientServices -ErrorAction SilentlyContinue | ForEach-Object { try { $_.PriorityClass='BelowNormal' } catch {} }"
+exit /b
+
+:FOCO_RESTAURAR
+powershell -NoProfile -Command "Get-Process -Name chrome,msedge,firefox,opera,brave,Spotify,steamwebhelper,EpicGamesLauncher,EpicWebHelper,RiotClientServices -ErrorAction SilentlyContinue | ForEach-Object { try { $_.PriorityClass='Normal' } catch {} }"
+net start bits >nul 2>&1
+net start wuauserv >nul 2>&1
+exit /b
+
+rem ==========================================================
+rem  MAIS FPS: UPSCALING E GERACAO DE QUADROS
+rem ==========================================================
+:OP_ESCALA
+cls
+echo.
+echo  ========= MAIS FPS: UPSCALING E GERACAO DE QUADROS =========
+echo  Gerar quadros extras exige um programa que usa a placa de video.
+echo  Um .bat nao faz isso, mas estas opcoes funcionam no Vega 7 do 5600G:
+echo.
+echo  1. FSR DENTRO DO JOGO - gratis, a melhor opcao
+echo     Nas opcoes graficas do jogo ative AMD FSR em Qualidade ou
+echo     Equilibrado. Se tiver FSR 3 Frame Generation, ative tambem.
+echo.
+echo  2. LOSSLESS SCALING - pago, na Steam, funciona em QUALQUER jogo
+echo     Ajuste bom para o 5600G:
+echo       - Jogo em "janela sem bordas" e resolucao 720p ou 900p
+echo       - Scaling: LS1 ou FSR - estica para a tela com nitidez
+echo       - Frame Gen: LSFG, modo X2, Flow Scale 50, modo Performance ligado
+echo       - So use Frame Gen se o jogo ja passa de 40 FPS, senao fica
+echo         com atraso no mouse. Com 30 FPS, use so o Scaling.
+echo.
+echo  3. AMD SOFTWARE ADRENALIN
+echo     Ative Radeon Anti-Lag e Radeon Image Sharpening.
+echo     O AFMF, geracao de quadros da AMD, NAO funciona no Vega 7.
+echo.
+echo  4. NA BIOS - ganho real e gratis, faca com cuidado
+echo     - XMP/DOCP ligado: RAM a 3200 ou 3600 MHz
+echo     - UMA Frame Buffer Size: 2G
+echo     - Precision Boost Overdrive: Enabled
+echo     - Avancado: Curve Optimizer All Core Negative 10 - mais turbo
+echo       e menos calor. Se o PC travar, volte para 0.
+echo.
+echo   [1] Abrir Lossless Scaling na Steam
+echo   [2] Abrir o AMD Software
+echo   [3] Baixar driver AMD mais recente
+echo   [0] Voltar
+echo.
+choice /c 1230 /m "  Escolha"
+if errorlevel 4 goto MENU
+if errorlevel 3 (start "" "https://www.amd.com/pt/support/download/drivers.html" & goto OP_ESCALA)
+if errorlevel 2 goto ESCALA_AMD
+start "" "https://store.steampowered.com/app/993090/"
+goto OP_ESCALA
+:ESCALA_AMD
+if exist "%ProgramFiles%\AMD\CNext\CNext\RadeonSoftware.exe" (
+    start "" "%ProgramFiles%\AMD\CNext\CNext\RadeonSoftware.exe"
+) else (
+    echo  AMD Software nao encontrado. Use a opcao [3] para baixar o driver.
+    pause
+)
+goto OP_ESCALA
+
+rem ==========================================================
 :COPIAR
 if /i not "%~f0"=="%COPIA%" copy /y "%~f0" "%COPIA%" >nul 2>&1
 exit /b
@@ -484,10 +647,11 @@ cls
 call :COPIAR
 echo.
 echo  Criando botoes na Area de Trabalho...
-powershell -NoProfile -Command "$d=[Environment]::GetFolderPath('Desktop'); $w=New-Object -ComObject WScript.Shell; $a=$w.CreateShortcut($d + '\Otimizar PC.lnk'); $a.TargetPath='%COPIA%'; $a.Arguments='auto'; $a.IconLocation='shell32.dll,43'; $a.Description='Otimiza tudo com 1 clique'; $a.Save(); $b=$w.CreateShortcut($d + '\Turbo Jogo.lnk'); $b.TargetPath='%COPIA%'; $b.Arguments='turbo'; $b.IconLocation='shell32.dll,238'; $b.Description='Use antes de jogar'; $b.Save(); $c=$w.CreateShortcut($d + '\Menu Otimizador.lnk'); $c.TargetPath='%COPIA%'; $c.IconLocation='shell32.dll,21'; $c.Save(); Write-Host '  Botoes criados!' -ForegroundColor Green"
+powershell -NoProfile -Command "$d=[Environment]::GetFolderPath('Desktop'); $w=New-Object -ComObject WScript.Shell; $a=$w.CreateShortcut($d + '\Otimizar PC.lnk'); $a.TargetPath='%COPIA%'; $a.Arguments='auto'; $a.IconLocation='shell32.dll,43'; $a.Description='Otimiza tudo com 1 clique'; $a.Save(); $b=$w.CreateShortcut($d + '\Turbo Jogo.lnk'); $b.TargetPath='%COPIA%'; $b.Arguments='turbo'; $b.IconLocation='shell32.dll,238'; $b.Description='Use antes de jogar'; $b.Save(); $c=$w.CreateShortcut($d + '\Menu Otimizador.lnk'); $c.TargetPath='%COPIA%'; $c.IconLocation='shell32.dll,21'; $c.Save(); $f=$w.CreateShortcut($d + '\Modo Foco Jogo.lnk'); $f.TargetPath='%COPIA%'; $f.Arguments='foco'; $f.IconLocation='shell32.dll,137'; $f.Description='Vigia o jogo e prioriza ele'; $f.Save(); Write-Host '  Botoes criados!' -ForegroundColor Green"
 echo.
 echo   "Otimizar PC"      - faz TUDO sozinho. Use 1 vez por mes.
 echo   "Turbo Jogo"       - clique antes de abrir um jogo.
+echo   "Modo Foco Jogo"   - vigia o ultimo jogo escolhido na opcao [F].
 echo   "Menu Otimizador"  - abre este menu.
 echo.
 echo   O programa ficou guardado em: %BK%
