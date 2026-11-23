@@ -58,6 +58,7 @@ echo   [9] Reparar rede - reset Winsock/IP, exige reiniciar
 echo.
 echo   [A] Criar BOTOES na Area de Trabalho - otimizar com 1 clique
 echo   [M] Limpeza AUTOMATICA toda semana
+echo   [B] Reiniciar direto na BIOS
 echo   [D] DESFAZER tudo - voltar ao padrao do Windows
 echo   [0] Sair
 echo.
@@ -77,6 +78,7 @@ if /i "%OP%"=="F" goto OP_FOCO
 if /i "%OP%"=="S" goto OP_ESCALA
 if /i "%OP%"=="A" goto OP_ATALHOS
 if /i "%OP%"=="M" goto OP_MANUT
+if /i "%OP%"=="B" goto OP_BIOS
 if /i "%OP%"=="D" goto OP_DESFAZER
 if "%OP%"=="0" exit /b
 goto MENU
@@ -636,6 +638,25 @@ if exist "%ProgramFiles%\AMD\CNext\CNext\RadeonSoftware.exe" (
     pause
 )
 goto OP_ESCALA
+
+rem ==========================================================
+:OP_BIOS
+cls
+echo.
+echo  O PC vai reiniciar e abrir a BIOS sozinho, sem precisar apertar DEL.
+echo  Salve o que estiver aberto antes.
+echo.
+choice /c SN /m "  Reiniciar na BIOS agora"
+if errorlevel 2 goto MENU
+shutdown /r /fw /t 5
+if errorlevel 1 (
+    echo  Nao deu para abrir a BIOS direto. Reinicie e aperte DEL varias vezes.
+    pause
+    goto MENU
+)
+echo  Reiniciando na BIOS em 5 segundos...
+timeout /t 10 >nul
+exit /b
 
 rem ==========================================================
 :COPIAR
